@@ -1,0 +1,9 @@
+﻿################################################################################
+# Ce fichier .gitignore a été automatiquement créé par Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/ITLH/.vs/ITLH
+/ITLH/boost_1_86_0/boost_1_86_0
+/ITLH/ITLH-Server/x64
+/ITLH/x64
