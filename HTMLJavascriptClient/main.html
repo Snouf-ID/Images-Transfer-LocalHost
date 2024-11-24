@@ -4,10 +4,137 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Envoi d'image via WebSocket</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #6a11cb, #2575fc);
+            color: white;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Section GitHub en haut à gauche */
+        .github-info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+            color: white;
+            font-size: 1rem;
+        }
+
+            .github-info img {
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                margin-right: 10px;
+            }
+
+            .github-info a {
+                text-decoration: none;
+                color: white;
+                font-weight: bold;
+                transition: color 0.3s;
+            }
+
+                .github-info a:hover {
+                    color: #ff7300;
+                }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: #ffffff;
+            color: #2575fc;
+            border: none;
+            border-radius: 8px;
+            padding: 15px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+            button:hover {
+                transform: scale(1.05);
+                box-shadow: 0px 6px 8px rgba(0, 0, 0, 0.3);
+            }
+
+            button:active {
+                transform: scale(0.95);
+                box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
+            }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
 </head>
 <body>
+    <!-- Section GitHub -->
+    <div class="github-info">
+        <img src="https://avatars.githubusercontent.com/u/47319640?s=96&v=4" alt="GitHub Avatar">
+        <a href="https://github.com/Snouf-ID" target="_blank">Suivez-moi sur GitHub</a>
+    </div>
+
     <h1>Envoyer une image au serveur</h1>
     <input type="file" id="fileInput" />
-    <script src="client.js"></script>
+    <script>
+        const socket = new WebSocket('ws://localhost:5000');
+
+        socket.onopen = function () {
+            console.log("Connexion établie avec le serveur.");
+
+            // Sélectionnez une image à partir d'un champ input
+            const fileInput = document.getElementById('fileInput');
+            fileInput.addEventListener('change', function (event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+
+                    // Une fois que le fichier est lu, envoyez-le au serveur
+                    reader.onload = function () {
+                        const arrayBuffer = reader.result;
+                        socket.send(arrayBuffer); // Envoi de l'image comme binaire
+                        console.log("Image envoyée au serveur.");
+                    };
+
+                    reader.readAsArrayBuffer(file); // Lire le fichier comme ArrayBuffer
+                }
+            });
+        };
+
+        socket.onmessage = function (event) {
+            console.log("Réponse du serveur : ", event.data);
+        };
+
+        socket.onerror = function (event) {
+            console.error("Erreur WebSocket : ", event);
+        };
+
+        socket.onclose = function () {
+            console.log("Connexion fermée.");
+        };
+
+    </script>
 </body>
 </html>
