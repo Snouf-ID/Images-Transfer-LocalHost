@@ -161,12 +161,36 @@ private:
     tcp::acceptor acceptor_;
 };
 
+static void print_local_IPv4(net::io_context& io_context)
+{
+    try {
+        // Obtenez une liste des interfaces réseau locales
+        boost::asio::ip::tcp::resolver resolver(io_context);
+        boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
+        auto results = resolver.resolve(query);
+
+        // Parcourez les résultats pour afficher les adresses IPv4
+        for (auto const& entry : results) {
+            auto endpoint = entry.endpoint();
+            if (endpoint.address().is_v4()) { // Filtrer uniquement les IPv4
+                std::cout << "Voici votre adress IPV4 local a indiquer sur la page WEB : " << endpoint.address().to_string() << std::endl;
+            }
+        }
+    }
+    catch (std::exception& e) {
+        std::cerr << "Erreur : " << e.what() << std::endl;
+    }
+}
+
 int main() {
     try {
         net::io_context ioc;
+
+        print_local_IPv4(ioc);
+
         tcp::endpoint endpoint(tcp::v4(), 5000);
         WebSocketServer server(ioc, endpoint);
-        std::cout << "Serveur WebSocket en écoute sur ws://localhost:5000" << std::endl;
+        std::cout << "Serveur WebSocket en écoute sur toute les interfaces réseau disponible en ipv4 sur le port ws://XXXX:5000" << std::endl;
         //ioc.stop();
         ioc.run();
     }

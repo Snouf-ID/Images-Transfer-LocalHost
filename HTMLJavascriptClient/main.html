@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Envoi d'image via WebSocket</title>
+    <link rel="icon" type="image/png" href="https://avatars.githubusercontent.com/u/47319640?s=32">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -30,30 +31,40 @@
             font-size: 1rem;
         }
 
-            .github-info img {
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                margin-right: 10px;
-            }
+        .github-info img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
 
-            .github-info a {
-                text-decoration: none;
-                color: white;
-                font-weight: bold;
-                transition: color 0.3s;
-            }
+        .github-info a {
+            text-decoration: none;
+            color: white;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
 
-                .github-info a:hover {
-                    color: #ff7300;
-                }
+        .github-info a:hover {
+            color: #ff7300;
+        }
 
         h1 {
             font-size: 2rem;
             margin-bottom: 20px;
         }
 
-        button {
+        input::placeholder {
+            color: #d3d3d3; /* Gris clair */
+            opacity: 0.5; /* Réduit l'opacité pour un effet plus subtil */
+        }
+
+        /* Enlever la bordure noire de l'input lors de la sélection */
+        input:focus {
+            outline: none; /* Enlève le contour par défaut */
+        }
+
+        input, button {
             background-color: #ffffff;
             color: #2575fc;
             border: none;
@@ -67,15 +78,23 @@
             transition: transform 0.2s, box-shadow 0.2s;
         }
 
-            button:hover {
-                transform: scale(1.05);
-                box-shadow: 0px 6px 8px rgba(0, 0, 0, 0.3);
-            }
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0px 6px 8px rgba(0, 0, 0, 0.3);
+        }
 
-            button:active {
-                transform: scale(0.95);
-                box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
-            }
+        button:active {
+            transform: scale(0.95);
+            box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* CSS pour griser un bouton */
+        .button-disabled {
+            background-color: #d3d3d3;
+            color: #a0a0a0;
+            cursor: not-allowed;
+            pointer-events: none; /* Désactive les clics */
+        }
 
         @media (max-width: 768px) {
             h1 {
@@ -87,54 +106,235 @@
                 font-size: 0.9rem;
             }
         }
+
+        .invalid-ip {
+            box-shadow: 0 0 10px 2px red;
+        }
     </style>
 </head>
 <body>
     <!-- Section GitHub -->
     <div class="github-info">
-        <img src="https://avatars.githubusercontent.com/u/47319640?s=96&v=4" alt="GitHub Avatar">
+        <img src="https://avatars.githubusercontent.com/u/47319640?s=64" alt="GitHub Avatar">
         <a href="https://github.com/Snouf-ID" target="_blank">Suivez-moi sur GitHub</a>
     </div>
 
     <h1>Envoyer une image au serveur</h1>
-    <input type="file" id="fileInput" />
+
+    <!-- Champ pour entrer l'IP du serveur -->
+    <div>
+        <input type="text" id="serverIp" placeholder="ex : 192.168.1.5">
+        <button id="connectButton">Se connecter au serveur</button>
+    </div>
+
     <script>
-        const socket = new WebSocket('ws://localhost:5000');
+        let socket;
+        let storedIp = '';
+        // Fonction pour ajouter/mettre à jour le paramètre IP dans l'URL
+        function updateUrlWithIp() {
+            const ip = storedIp;
+            const url = new URL(window.location); // Récupère l'URL actuelle
+            url.searchParams.set('ip', ip);       // Ajoute ou met à jour le paramètre 'ip'
+            window.history.replaceState({}, '', url); // Met à jour l'URL sans recharger la page
+        }
 
-        socket.onopen = function () {
-            console.log("Connexion établie avec le serveur.");
+        // Recharger la page
+        function reloadPageWithIp() {
+            updateUrlWithIp(); // Met à jour l'URL avec l'IP
+            location.reload();   // Recharge la page
+        }
 
-            // Sélectionnez une image à partir d'un champ input
-            const fileInput = document.getElementById('fileInput');
-            fileInput.addEventListener('change', function (event) {
-                const file = event.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
+        // Fonction pour récupérer l'IP depuis l'URL
+        function getIpFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const ip = urlParams.get('ip');  // Récupérer la valeur de 'ip' dans l'URL
+            storedIp = ip;
+            return ip;
+        }
 
-                    // Une fois que le fichier est lu, envoyez-le au serveur
-                    reader.onload = function () {
-                        const arrayBuffer = reader.result;
-                        socket.send(arrayBuffer); // Envoi de l'image comme binaire
-                        console.log("Image envoyée au serveur.");
-                    };
+        // code d'init javascript
+        const ip = getIpFromUrl();  // Récupérer l'IP depuis l'URL
+        if (ip) {
+            // Si l'IP est présente dans l'URL, remplir le champ avec cette valeur
+            const serverIpInput = document.getElementById('serverIp');
+            if (serverIpInput) {
+                serverIpInput.value = ip;  // Remplir le champ 'serverIp' avec l'IP
+            }
+        }
 
-                    reader.readAsArrayBuffer(file); // Lire le fichier comme ArrayBuffer
+        // Fonction pour valider l'IP
+        function isValidIP(ip) {
+            const regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+            return regex.test(ip);
+        }
+
+        async function sendFile(file)
+        {
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function () {
+                    const arrayBuffer = reader.result;
+                    socket.send(arrayBuffer); // Envoi de l'image comme binaire
+                    console.log("Image envoyée au serveur.");
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        // Fonction pour établir la connexion WebSocket
+        function connectWebSocket() {
+            const ip = document.getElementById('serverIp').value;
+
+            if (!isValidIP(ip)) {
+                const serverIpInput = document.getElementById('serverIp');
+
+                serverIpInput.classList.add('invalid-ip');
+                setTimeout(() => {
+                    serverIpInput.classList.remove('invalid-ip');
+                }, 3000);
+
+                return;
+            }
+
+            const wsUrl = `ws://${ip}:5000`; // Change le port si nécessaire
+
+            // Création du WebSocket
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = function () {
+                console.log("Connexion établie avec le serveur.");
+
+                storedIp = document.getElementById('serverIp').value;
+                updateUrlWithIp();
+
+                // Supprimer les éléments d'entrée de l'IP et du fichier
+                const ipInputContainer = document.getElementById('serverIp');
+                const connectButton = document.getElementById('connectButton');
+
+                ipInputContainer.remove();
+                connectButton.remove();
+
+                // Ajouter un message de confirmation
+                const confirmationMessage = document.createElement('div');
+                confirmationMessage.innerHTML = '<h2>Connexion réussie avec le serveur!</h2>';
+                document.body.appendChild(confirmationMessage);
+
+                // Créer un conteneur pour les boutons
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.display = 'flex'; // Utiliser flexbox pour les aligner côte à côte
+                buttonContainer.style.justifyContent = 'center'; // Centrer les boutons horizontalement
+                buttonContainer.style.gap = '10px'; // Espacement entre les boutons
+                document.body.appendChild(buttonContainer);
+
+                //// Ajouter un bouton pour envoyer l'image
+                //const sendFileButton = document.createElement('button');
+                //sendFileButton.innerHTML = 'Envoyer des images';
+                //sendFileButton.id = 'uploadFile';
+                //buttonContainer.appendChild(sendFileButton);
+
+                // Ajouter un bouton pour envoyer l'image
+                const sendFileButton = document.createElement('button');
+                sendFileButton.innerHTML = 'Envoyer des images';
+                sendFileButton.id = 'uploadFile';
+                buttonContainer.appendChild(sendFileButton);
+
+                const inputFile = document.createElement('input');
+                inputFile.type = 'file';
+                inputFile.id = 'fileInput';
+                inputFile.multiple = true; // Permet de sélectionner plusieurs fichiers
+                inputFile.style.display = 'none';
+                document.body.appendChild(inputFile);
+
+                // Ajouter un événement au bouton pour déclencher le clic de l'input file
+                sendFileButton.addEventListener('click', function () {
+                    inputFile.click(); // Déclenche le clic sur l'élément input pour ouvrir la boîte de sélection
+                });
+
+                // Ajouter un bouton pour envoyer toute les images d'un dossier
+                const sendDirButton = document.createElement('button');
+                sendDirButton.innerHTML = 'Envoyer le contenu d\'un répertoire';
+                sendDirButton.id = 'uploadDir';
+                buttonContainer.appendChild(sendDirButton);
+
+                // Lorsque le bouton "Envoyer l'image" est cliqué, envoyer l'image
+                //sendFileButton.addEventListener("click", async () => {
+                //    const [fileHandle] = await window.showOpenFilePicker();
+                //    const file = await fileHandle.getFile();
+                //    sendFile(file);
+                //});
+
+                // Gestion de l'envoi des fichiers lorsque l'utilisateur sélectionne des fichiers
+                inputFile.addEventListener('change', function (event) {
+                    const files = event.target.files; // Récupère tous les fichiers sélectionnés
+
+                    const fileCount = files.length; // Nombre de fichiers sélectionnés
+
+                    // Mettre à jour le texte du bouton pour afficher le nombre d'images sélectionnées
+                    sendFileButton.innerHTML = `Envoyer des images (${fileCount} fichier${fileCount > 1 ? 's' : ''})`;
+
+                    if (files.fileCount > 0) {
+                        for (let i = 0; i < files.fileCount; i++) {
+                            const file = files[i];
+                            const reader = new FileReader();
+
+                            // Une fois que le fichier est lu, envoyez-le au serveur
+                            reader.onload = function () {
+                                const arrayBuffer = reader.result;
+                                socket.send(arrayBuffer); // Envoi de l'image comme binaire
+                                console.log(`Image ${file.name} envoyée au serveur.`);
+                            };
+
+                            reader.readAsArrayBuffer(file); // Lire chaque fichier comme ArrayBuffer
+                        }
+                    }
+                });
+
+                // Lorsque le bouton "Envoyer Dir" est cliqué, envoyer toutes les images
+                if ('showDirectoryPicker' in window)
+                {
+                    sendDirButton.classList.remove('button-disabled');
+
+                    sendDirButton.addEventListener("click", async () => {
+                        const dirHandle = await window.showDirectoryPicker();
+                        let sentFilesCount = 0;
+
+                        for await (const entry of dirHandle.values()) {
+                            if (entry.kind === "file") {
+                                const file = await entry.getFile();
+                                sendFile(file);
+                                sentFilesCount++;
+                            }
+                        }
+
+                        sendDirButton.innerHTML = `Envoyer le contenu d'un répertoire (${sentFilesCount} fichiers envoyés)`;
+                    });
                 }
-            });
-        };
+                else
+                {
+                    sendDirButton.classList.add('button-disabled');
+                    sendDirButton.disabled = true;
+                }
+            };
 
-        socket.onmessage = function (event) {
-            console.log("Réponse du serveur : ", event.data);
-        };
+            socket.onmessage = function (event) {
+                console.log("Réponse du serveur : ", event.data);
+            };
 
-        socket.onerror = function (event) {
-            console.error("Erreur WebSocket : ", event);
-        };
+            socket.onerror = function (event) {
+                console.error("Erreur WebSocket : ", event);
+                reloadPageWithIp();
+            };
 
-        socket.onclose = function () {
-            console.log("Connexion fermée.");
-        };
+            socket.onclose = function () {
+                console.log("Connexion fermée.");
+                reloadPageWithIp(); 
+            };
+        }
 
+        // Gestion du clic sur le bouton de connexion
+        document.getElementById('connectButton').addEventListener('click', function () {
+            connectWebSocket();
+        });
     </script>
 </body>
 </html>
