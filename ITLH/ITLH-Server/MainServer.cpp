@@ -97,7 +97,7 @@ private:
                         boost::asio::buffer_cast<const uint8_t*>(self->buffer_.data()) + self->buffer_.size());
 
                     // Identifier le format d'image
-                    static int number_icr = 0;
+                    static int number_icr = 0; // need atomic ?
                     number_icr++;
 
                     std::string extension = identify_image_format(data);
