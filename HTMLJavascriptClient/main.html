@@ -119,7 +119,7 @@
         <a href="https://github.com/Snouf-ID" target="_blank">Suivez-moi sur GitHub</a>
     </div>
 
-    <h1>Envoyer une image au serveur</h1>
+    <h1 id="titletext">Indicates the IP of the computer that should receive the files</h1>
 
     <!-- Champ pour entrer l'IP du serveur -->
     <div>
@@ -130,6 +130,8 @@
     <script>
         var socket;
         var storedIp = '';
+        var sendCount = 0;
+        var confirmCount = 0;
         // Fonction pour ajouter/mettre à jour le paramètre IP dans l'URL
         function updateUrlWithIp() {
             const ip = storedIp;
@@ -157,6 +159,30 @@
             return ip;
         }
 
+        function desactivateButtons() {
+            const sendDirButton = document.getElementById('uploadDir');
+            const sendFileButton = document.getElementById('uploadFile');
+
+            if ('showDirectoryPicker' in window) {
+                sendDirButton.classList.add('button-disabled');
+                sendDirButton.disabled = true;
+            }
+            sendFileButton.classList.add('button-disabled');
+            sendFileButton.disabled = true;
+        }
+
+        function activateButtons() {
+            const sendDirButton = document.getElementById('uploadDir');
+            const sendFileButton = document.getElementById('uploadFile');
+
+            if ('showDirectoryPicker' in window) {
+                sendDirButton.classList.remove('button-disabled');
+                sendDirButton.disabled = false;
+            }
+            sendFileButton.classList.remove('button-disabled');
+            sendFileButton.disabled = false;
+        }
+
         // code d'init javascript
         const ip = getIpFromUrl();  // Récupérer l'IP depuis l'URL
         if (ip) {
@@ -171,19 +197,6 @@
         function isValidIP(ip) {
             const regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
             return regex.test(ip);
-        }
-
-        async function sendFile(file)
-        {
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function () {
-                    const arrayBuffer = reader.result;
-                    socket.send(arrayBuffer); // Envoi de l'image comme binaire
-                    console.log("Image envoyée au serveur.");
-                };
-                reader.readAsArrayBuffer(file);
-            }
         }
 
         // Fonction pour établir la connexion WebSocket
@@ -212,6 +225,9 @@
                 storedIp = document.getElementById('serverIp').value;
                 updateUrlWithIp();
 
+                const headertext = document.getElementById("titletext");
+                headertext.innerText = 'Select files or an entire directory that will be sent';
+
                 // Supprimer les éléments d'entrée de l'IP et du fichier
                 const ipInputContainer = document.getElementById('serverIp');
                 const connectButton = document.getElementById('connectButton');
@@ -219,23 +235,12 @@
                 ipInputContainer.remove();
                 connectButton.remove();
 
-                // Ajouter un message de confirmation
-                const confirmationMessage = document.createElement('div');
-                confirmationMessage.innerHTML = '<h2>Connexion réussie avec le serveur!</h2>';
-                document.body.appendChild(confirmationMessage);
-
                 // Créer un conteneur pour les boutons
                 const buttonContainer = document.createElement('div');
                 buttonContainer.style.display = 'flex'; // Utiliser flexbox pour les aligner côte à côte
                 buttonContainer.style.justifyContent = 'center'; // Centrer les boutons horizontalement
                 buttonContainer.style.gap = '10px'; // Espacement entre les boutons
                 document.body.appendChild(buttonContainer);
-
-                //// Ajouter un bouton pour envoyer l'image
-                //const sendFileButton = document.createElement('button');
-                //sendFileButton.innerHTML = 'Envoyer des images';
-                //sendFileButton.id = 'uploadFile';
-                //buttonContainer.appendChild(sendFileButton);
 
                 // Ajouter un bouton pour envoyer l'image
                 const sendFileButton = document.createElement('button');
@@ -261,56 +266,137 @@
                 sendDirButton.id = 'uploadDir';
                 buttonContainer.appendChild(sendDirButton);
 
-                // Lorsque le bouton "Envoyer l'image" est cliqué, envoyer l'image
-                //sendFileButton.addEventListener("click", async () => {
-                //    const [fileHandle] = await window.showOpenFilePicker();
-                //    const file = await fileHandle.getFile();
-                //    sendFile(file);
-                //});
+                // Fonction pour envoyer une image et attendre la confirmation avant d'envoyer la suivante
+                function sendImageWithConfirmation(file, socket) {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = function () {
+                            const arrayBuffer = reader.result;
 
-                // Gestion de l'envoi des fichiers lorsque l'utilisateur sélectionne des fichiers
-                inputFile.addEventListener('change', function (event) {
-                    const files = event.target.files; // Récupère tous les fichiers sélectionnés
-                    const fileCount = files.length; // Nombre de fichiers sélectionnés
+                            // Envoyer l'image au serveur via WebSocket
+                            socket.send(arrayBuffer);
+                            console.log(`Image ${file.name} envoyée.`);
 
-                    // Mettre à jour le texte du bouton pour afficher le nombre d'images sélectionnées
-                    sendFileButton.innerHTML = `Envoyer des images (${fileCount} fichier${fileCount > 1 ? 's' : ''})`;
+                            // Attendre la confirmation du serveur
+                            socket.onmessage = function (event) {
+                                console.log("Message reçu du serveur :", event.data);
+                                if (event.data.startsWith('ACK')) {
+                                    console.log(`Confirmation reçue pour ${file.name}`);
+                                    confirmCount++;
 
-                    if (fileCount > 0) {
-                        for (var i = 0; i < fileCount; i++) {
-                            const file = files[i];
-                            const reader = new FileReader();
-
-                            // Une fois que le fichier est lu, envoyez-le au serveur
-                            reader.onload = function () {
-                                const arrayBuffer = reader.result;
-                                socket.send(arrayBuffer); // Envoi de l'image comme binaire
-                                console.log(`Image ${file.name} envoyée au serveur.`);
+                                    resolve(); // Résoudre la promesse lorsque la confirmation est reçue
+                                } else {
+                                    reject(`Erreur lors de la réception de la confirmation pour ${file.name}`);
+                                }
                             };
+                        };
 
-                            reader.readAsArrayBuffer(file); // Lire chaque fichier comme ArrayBuffer
+                        reader.readAsArrayBuffer(file); // Lire le fichier comme ArrayBuffer
+                    });
+                }
+
+                // Fonction pour envoyer toutes les images une par une avec confirmation
+                async function sendFilesWithConfirmation(files, socket) {
+                    var anyFileSend = false;
+
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+                        try {
+                            headertext.innerText = `File send (${i}/${files.length})`;
+                            await sendImageWithConfirmation(file, socket); // Attendre que chaque image soit envoyée et confirmée
+                            console.log(`Image ${file.name} envoyée et confirmée.`);
+                            anyFileSend = true;
+                        } catch (error) {
+                            console.error(error); // Gérer les erreurs si l'envoi ou la confirmation échoue
+                            alert('assert : need debug');
                         }
                     }
+
+                    if (confirmCount == sendCount) {
+                        activateButtons();
+                        if (anyFileSend) {
+                            headertext.innerText = 'Everything went well. You can again select files or an entire directory that will be sent';
+                        }
+                        // Mettre à jour le texte du bouton pour afficher le nombre d'images sélectionnées
+                        sendFileButton.innerHTML = `Envoyer des images (${sendCount} fichier${sendCount > 1 ? 's' : ''} previously sent)`;
+                    }
+                }
+
+                inputFile.addEventListener('change', function (event) {
+                    confirmCount = 0;
+                    sendCount = 0;
+
+                    const files = event.target.files; // Récupère tous les fichiers sélectionnés
+                    if (files.length === 0) {
+                        return; // Aucun fichier sélectionné
+                    }
+
+                    sendCount = files.length;
+                    desactivateButtons();
+
+                    const fileArray = Array.from(files);
+
+                    sendFilesWithConfirmation(fileArray, socket);
+
+                    // Réinitialise la valeur de l'entrée pour permettre une nouvelle sélection des mêmes fichiers
+                    event.target.value = '';
                 });
 
-                // Lorsque le bouton "Envoyer Dir" est cliqué, envoyer toutes les images
+                // Lorsque le bouton "Envoyer Dir" est cliqué, envoyer toutes les images avec confirmation serveur
                 if ('showDirectoryPicker' in window)
                 {
                     sendDirButton.classList.remove('button-disabled');
 
                     sendDirButton.addEventListener("click", async () => {
+                        confirmCount = 0;
+                        sendCount = 0;
+
+                        desactivateButtons();
+
                         const dirHandle = await window.showDirectoryPicker();
                         var sentFilesCount = 0;
+                        var totalFilesCount = 0;
+                        var anyFileSend = false;
 
+                        // Parcourir les fichiers et les envoyer un par un avec confirmation
                         for await (const entry of dirHandle.values()) {
                             if (entry.kind === "file") {
                                 const file = await entry.getFile();
-                                sendFile(file);
-                                sentFilesCount++;
+
+                                try {
+                                    headertext.innerText = `File send (${sentFilesCount}/${totalFilesCount})`;
+                                    await sendImageWithConfirmation(file, socket); // Attendre la confirmation avant de continuer
+                                    sentFilesCount++;
+                                    anyFileSend = true;
+                                } catch (error) {
+                                    console.error(error); // Gérer les erreurs si une confirmation échoue
+                                }
+
+                                totalFilesCount++;
                             }
                         }
 
-                        sendDirButton.innerHTML = `Envoyer le contenu d'un répertoire (${sentFilesCount} fichiers envoyés)`;
+                        sendCount = sentFilesCount;
+
+                        if (confirmCount == sendCount) {
+                            activateButtons();
+                            if (anyFileSend) {
+                                if (totalFilesCount == sentFilesCount) {
+                                    headertext.innerText = 'Everything went well. You can again select files or an entire directory that will be sent';
+                                }
+                                else {
+                                    var totalSkip = totalFilesCount - sentFilesCount;
+                                    headertext.innerText = `Miss ${totalSkip} files on ${totalFilesCount}. You can again select files or an entire directory that will be sent`;
+                                }
+                            }
+                        }
+                        else {
+                            console.log('bug');
+                            alert('assert : need debug');
+                        }
+
+                        // Mise à jour du bouton avec le nombre de fichiers envoyés
+                        sendDirButton.innerHTML = `Envoyer le contenu d'un répertoire (${sentFilesCount} fichiers previously sent)`;
                     });
                 }
                 else

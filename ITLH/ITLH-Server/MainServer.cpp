@@ -13,6 +13,8 @@ namespace websocket = beast::websocket;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 
+constexpr char ack_message[] = "ACK:image_received";
+
 // Fonction pour identifier le type de fichier à partir des données binaires
 static std::string identify_image_format(const std::vector<uint8_t>& data)
 {
@@ -104,6 +106,17 @@ private:
                     std::string filename = "image_received_" + std::to_string(number_icr) + "." + extension;
 
                     self->save_image(filename, self->buffer_);
+
+                    // Simuler un délai (attention : ceci bloque le thread !)
+                    //std::this_thread::sleep_for(std::chrono::milliseconds(5000)); // Délai de 1 seconde
+
+                    self->ws_.async_write(
+                        boost::asio::buffer(ack_message),
+                        [](beast::error_code ec, std::size_t bytes_transferred) {
+                            if (ec) {
+                                std::cerr << "Erreur lors de l'envoi de l'ACK : " << ec.message() << std::endl;
+                            }
+                        });
                 }
                 else
                 {
