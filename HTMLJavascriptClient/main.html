@@ -128,14 +128,19 @@
     </div>
 
     <script>
-        let socket;
-        let storedIp = '';
+        var socket;
+        var storedIp = '';
         // Fonction pour ajouter/mettre à jour le paramètre IP dans l'URL
         function updateUrlWithIp() {
             const ip = storedIp;
             const url = new URL(window.location); // Récupère l'URL actuelle
             url.searchParams.set('ip', ip);       // Ajoute ou met à jour le paramètre 'ip'
-            window.history.replaceState({}, '', url); // Met à jour l'URL sans recharger la page
+            try {
+                window.history.pushState({}, '', url);
+            } catch (error) {
+                // Affiche l'erreur dans un pop-up
+                console.log("Impossible d'ajouter l'ip dans le chemin html, sans doute car votre chemin de fichier commence pas par http" + error.message) ;
+            }
         }
 
         // Recharger la page
@@ -266,14 +271,13 @@
                 // Gestion de l'envoi des fichiers lorsque l'utilisateur sélectionne des fichiers
                 inputFile.addEventListener('change', function (event) {
                     const files = event.target.files; // Récupère tous les fichiers sélectionnés
-
                     const fileCount = files.length; // Nombre de fichiers sélectionnés
 
                     // Mettre à jour le texte du bouton pour afficher le nombre d'images sélectionnées
                     sendFileButton.innerHTML = `Envoyer des images (${fileCount} fichier${fileCount > 1 ? 's' : ''})`;
 
-                    if (files.fileCount > 0) {
-                        for (let i = 0; i < files.fileCount; i++) {
+                    if (fileCount > 0) {
+                        for (var i = 0; i < fileCount; i++) {
                             const file = files[i];
                             const reader = new FileReader();
 
@@ -296,7 +300,7 @@
 
                     sendDirButton.addEventListener("click", async () => {
                         const dirHandle = await window.showDirectoryPicker();
-                        let sentFilesCount = 0;
+                        var sentFilesCount = 0;
 
                         for await (const entry of dirHandle.values()) {
                             if (entry.kind === "file") {
