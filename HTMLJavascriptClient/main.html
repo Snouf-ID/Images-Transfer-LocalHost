@@ -271,11 +271,32 @@
                     return new Promise((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onload = function () {
-                            const arrayBuffer = reader.result;
+                            //const arrayBuffer = reader.result;
 
-                            // Envoyer l'image au serveur via WebSocket
-                            socket.send(arrayBuffer);
-                            console.log(`Image ${file.name} envoyée.`);
+                            //// Envoyer l'image au serveur via WebSocket
+                            //socket.send(arrayBuffer);
+
+                            const fileContent = new Uint8Array(reader.result); // Contenu binaire du fichier
+                            const fileName = file.name; // Nom du fichier
+                            const fileNameBytes = new TextEncoder().encode(fileName); // Encodage UTF-8 du nom
+
+                            // Créer un buffer avec la taille totale : 4 octets (longueur du nom) + nom + contenu
+                            const totalSize = 4 + fileNameBytes.length + fileContent.length;
+                            const buffer = new Uint8Array(totalSize);
+
+                            // Ajouter la longueur du nom (4 octets)
+                            const dataView = new DataView(buffer.buffer);
+                            dataView.setUint32(0, fileNameBytes.length, true); // Little-endian
+
+                            // Ajouter le nom du fichier
+                            buffer.set(fileNameBytes, 4);
+
+                            // Ajouter le contenu binaire du fichier
+                            buffer.set(fileContent, 4 + fileNameBytes.length);
+
+                            // Envoyer via WebSocket
+                            socket.send(buffer);
+                            console.log(`Fichier "${fileName}" envoyé avec son contenu.`);
 
                             // Attendre la confirmation du serveur
                             socket.onmessage = function (event) {

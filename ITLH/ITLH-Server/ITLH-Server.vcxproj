@@ -130,9 +130,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="MainServer.h" />
+    <ClInclude Include="WindowsFileDiag.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MainServer.cpp" />
+    <ClCompile Include="WindowsFileDiag.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

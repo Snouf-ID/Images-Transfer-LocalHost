@@ -7,6 +7,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include "WindowsFileDiag.h"
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
@@ -14,34 +15,7 @@ namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 
 constexpr char ack_message[] = "ACK:image_received";
-
-// Fonction pour identifier le type de fichier à partir des données binaires
-static std::string identify_image_format(const std::vector<uint8_t>& data)
-{
-    if (data.size() < 8) {
-        return "unknown"; // Trop court pour être valide
-    }
-
-    // Vérification des signatures
-    if (data[0] == 0xFF && data[1] == 0xD8) {
-        return "jpg";
-    }
-    else if (data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 &&
-        data[4] == 0x0D && data[5] == 0x0A && data[6] == 0x1A && data[7] == 0x0A) {
-        return "png";
-    }
-    else if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46) {
-        return "gif";
-    }
-    else if (data[0] == 0x42 && data[1] == 0x4D) {
-        return "bmp";
-    }
-    else if ((data[0] == 0x49 && data[1] == 0x49) || (data[0] == 0x4D && data[1] == 0x4D)) {
-        return "tiff";
-    }
-
-    return "unknown"; // Format non reconnu
-}
+std::string saveDirectory;
 
 // Classe Session
 class Session : public std::enable_shared_from_this<Session> {
@@ -72,6 +46,47 @@ public:
 private:
     websocket::stream<tcp::socket> ws_;
 
+    void process_binary_message(beast::flat_buffer& buffer)
+    {
+        auto data = boost::asio::buffer_cast<const uint8_t*>(buffer.data());
+        auto size = buffer.size();
+
+        // Vérifier la longueur minimale pour contenir un préfixe
+        if (size < 4) {
+            std::cerr << "Données binaires reçues trop courtes !" << std::endl;
+            return;
+        }
+
+        // Extraire la longueur du nom du fichier
+        uint32_t name_length = *reinterpret_cast<const uint32_t*>(data);
+        if (size < 4 + name_length) {
+            std::cerr << "Taille de message incohérente !" << std::endl;
+            return;
+        }
+
+        // Extraire le nom du fichier
+        std::string file_name(reinterpret_cast<const char*>(data + 4), name_length);
+
+        // Extraire le contenu binaire
+        const uint8_t* file_content = data + 4 + name_length;
+        size_t file_size = size - 4 - name_length;
+
+        // Sauvegarder le fichier
+        save_file(file_name, file_content, file_size);
+
+        // Simuler un délai (attention : ceci bloque le thread !)
+        //std::this_thread::sleep_for(std::chrono::milliseconds(5000)); // Délai de 1 seconde
+
+        // Envoyer une confirmation
+        ws_.async_write(
+            boost::asio::buffer(ack_message),
+            [](beast::error_code ec, std::size_t bytes_transferred) {
+                if (ec) {
+                    std::cerr << "Erreur lors de l'envoi de l'ACK : " << ec.message() << std::endl;
+                }
+            });
+    }
+
     // Callback d'acceptation
     void on_accept(beast::error_code ec) {
         if (ec) {
@@ -94,29 +109,7 @@ private:
                 // Traitement des données reçues ici
                 if (self->ws_.got_binary())
                 {
-                    // Extraire les données binaires dans un vecteur
-                    std::vector<uint8_t> data(boost::asio::buffer_cast<const uint8_t*>(self->buffer_.data()),
-                        boost::asio::buffer_cast<const uint8_t*>(self->buffer_.data()) + self->buffer_.size());
-
-                    // Identifier le format d'image
-                    static int number_icr = 0; // need atomic ?
-                    number_icr++;
-
-                    std::string extension = identify_image_format(data);
-                    std::string filename = "image_received_" + std::to_string(number_icr) + "." + extension;
-
-                    self->save_image(filename, self->buffer_);
-
-                    // Simuler un délai (attention : ceci bloque le thread !)
-                    //std::this_thread::sleep_for(std::chrono::milliseconds(5000)); // Délai de 1 seconde
-
-                    self->ws_.async_write(
-                        boost::asio::buffer(ack_message),
-                        [](beast::error_code ec, std::size_t bytes_transferred) {
-                            if (ec) {
-                                std::cerr << "Erreur lors de l'envoi de l'ACK : " << ec.message() << std::endl;
-                            }
-                        });
+                    self->process_binary_message(self->buffer_);
                 }
                 else
                 {
@@ -133,23 +126,20 @@ private:
             });
     }
 
-    // Fonction pour sauvegarder les données reçues comme une image
-    void save_image(const std::string& filename, const beast::flat_buffer& buffer)
+    void save_file(const std::string& file_name, const uint8_t* data, size_t size)
     {
-        std::ofstream file(filename, std::ios::binary); // Ouvre en mode binaire
-        if (!file) {
-            std::cerr << "Erreur : impossible d'ouvrir le fichier " << filename << " pour écriture." << std::endl;
+        std::string fullPath = saveDirectory + "\\" + file_name;
+
+        // Sauvegarder dans un fichier
+        std::ofstream out_file(fullPath, std::ios::binary);
+        if (!out_file) {
+            std::cerr << "Impossible d'ouvrir le fichier pour écriture : " << fullPath << std::endl;
             return;
         }
+        out_file.write(reinterpret_cast<const char*>(data), size);
+        out_file.close();
 
-        // Écrit les données dans le fichier
-        file.write(static_cast<const char*>(buffer.data().data()), buffer.size());
-        if (file) {
-            std::cout << "Image sauvegardée sous : " << filename << std::endl;
-        }
-        else {
-            std::cerr << "Erreur : écriture échouée." << std::endl;
-        }
+        std::cout << "Fichier sauvegardé : " << file_name << " (" << size << " octets)" << std::endl;
     }
 
     beast::flat_buffer buffer_;
@@ -197,6 +187,12 @@ static void print_local_IPv4(net::io_context& io_context)
 
 int main() {
     try {
+        saveDirectory = WindowsFileDiag::select_folder();
+        if (saveDirectory.empty()) {
+            std::cerr << "Aucun dossier sélectionné. Fermeture du serveur." << std::endl;
+            return -1;
+        }
+
         net::io_context ioc;
 
         print_local_IPv4(ioc);
