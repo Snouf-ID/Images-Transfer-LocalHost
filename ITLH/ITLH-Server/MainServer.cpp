@@ -52,27 +52,40 @@ private:
         auto size = buffer.size();
 
         // Vérifier la longueur minimale pour contenir un préfixe
-        if (size < 4) {
+        if (size < 12) {
             std::cerr << "Données binaires reçues trop courtes !" << std::endl;
             return;
         }
 
-        // Extraire la longueur du nom du fichier
+        // Extraire la longueur du nom du fichier (4 octets, little-endian)
         uint32_t name_length = *reinterpret_cast<const uint32_t*>(data);
-        if (size < 4 + name_length) {
+        data += 4;
+
+        // Extraire la date de dernière modification (8 octets, double, little-endian)
+        double last_modified = *reinterpret_cast<const double*>(data);
+        data += 8;
+
+        // Vérifier si les données restantes sont suffisantes pour contenir le nom
+        if (size < 12 + name_length)
+        {
             std::cerr << "Taille de message incohérente !" << std::endl;
             return;
         }
 
         // Extraire le nom du fichier
-        std::string file_name(reinterpret_cast<const char*>(data + 4), name_length);
+        std::string file_name(reinterpret_cast<const char*>(data), name_length);
 
         // Extraire le contenu binaire
-        const uint8_t* file_content = data + 4 + name_length;
-        size_t file_size = size - 4 - name_length;
+        const uint8_t* file_content = data + name_length;
+        size_t file_size = size - 12 - name_length;
+
+        // Afficher les métadonnées pour debug
+        std::cout << "Nom du fichier : " << file_name << std::endl;
+        std::cout << "Date de modification (timestamp) : " << last_modified << std::endl;
+        std::cout << "Taille du contenu : " << file_size << " octets" << std::endl;
 
         // Sauvegarder le fichier
-        save_file(file_name, file_content, file_size);
+        save_file(file_name, file_content, file_size, last_modified);
 
         // Simuler un délai (attention : ceci bloque le thread !)
         //std::this_thread::sleep_for(std::chrono::milliseconds(5000)); // Délai de 1 seconde
@@ -126,7 +139,7 @@ private:
             });
     }
 
-    void save_file(const std::string& file_name, const uint8_t* data, size_t size)
+    void save_file(const std::string& file_name, const uint8_t* data, size_t size, double last_modified)
     {
         std::string fullPath = saveDirectory + "\\" + file_name;
 
@@ -138,6 +151,9 @@ private:
         }
         out_file.write(reinterpret_cast<const char*>(data), size);
         out_file.close();
+
+        // Appliquer la date de modification au fichier
+        WindowsFileDiag::setFileCreationTime(fullPath, last_modified);
 
         std::cout << "Fichier sauvegardé : " << file_name << " (" << size << " octets)" << std::endl;
     }
