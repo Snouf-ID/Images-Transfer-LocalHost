@@ -7,6 +7,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include "WindowsFileDiag.h"
 
 namespace beast = boost::beast;
@@ -139,9 +140,48 @@ private:
             });
     }
 
+    static std::string generateUniqueFileName(const std::string& directory, const std::string& fileName)
+    {
+        std::filesystem::path dirPath(directory);
+        std::filesystem::path filePath = dirPath / fileName;
+
+        // Si le fichier n'existe pas, renvoyer le nom initial
+        if (!std::filesystem::exists(filePath))
+        {
+            return filePath.string();
+        }
+
+        // Décomposer le nom de fichier et son extension
+        std::string baseName = filePath.stem().string();
+        std::string extension = filePath.extension().string();
+
+        uint32_t counter = 1;
+
+        // Générer un nouveau nom jusqu'à trouver un fichier inexistant
+        while (true)
+        {
+            std::string newFileName = baseName + "_" + std::to_string(counter) + extension;
+            std::filesystem::path newFilePath = dirPath / newFileName;
+
+            if (!std::filesystem::exists(newFilePath))
+            {
+                return newFilePath.string();
+            }
+
+            counter++;
+
+            if (counter > 50000)
+            {
+                std::cerr << "Erreur lors de la generation de nom, plus de 50000 fichier avec le meme nom, fermeture du programme" << std::endl;
+                abort();
+                return "";
+            }
+        }
+    }
+
     void save_file(const std::string& file_name, const uint8_t* data, size_t size, double last_modified)
     {
-        std::string fullPath = saveDirectory + "\\" + file_name;
+        const std::string& fullPath = generateUniqueFileName(saveDirectory, file_name);
 
         // Sauvegarder dans un fichier
         std::ofstream out_file(fullPath, std::ios::binary);
