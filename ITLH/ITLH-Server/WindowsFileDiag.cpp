@@ -6,6 +6,13 @@
 #include <iostream>
 #include <combaseapi.h> // Pour CoInitialize et CoUninitialize
 
+#include <propvarutil.h> // Pour PropVariantInit et PropVariantClear
+#include <propsys.h>     // Pour accès au Property System
+#include <propkey.h>
+
+//#define NTDDI_VERSION NTDDI_WIN10 // utile ?
+//#define _WIN32_WINNT _WIN32_WINNT_WIN10 // deja dans les property du project
+
 std::string WindowsFileDiag::select_folder()
 {
     // Initialiser COM
@@ -60,6 +67,7 @@ std::string WindowsFileDiag::select_folder()
             CoUninitialize();
 
             // Convertir std::wstring en std::string
+            // warning C4244: '=' : conversion de 'wchar_t' en 'char', perte possible de données
             return std::string(ws.begin(), ws.end());
         }
         pItem->Release();
@@ -147,4 +155,44 @@ void WindowsFileDiag::setFileCreationTime(const std::string& filePath, uint64_t 
 
     // Fermer le handle du fichier
     CloseHandle(fileHandle);
+}
+
+void WindowsFileDiag::GetFileMetadata(const std::wstring& filePath)
+{
+    // Initialiser COM
+    HRESULT hr = CoInitialize(nullptr);
+    if (FAILED(hr)) {
+        std::wcerr << L"Erreur lors de l'initialisation de COM : " << std::hex << hr << std::endl;
+        return;
+    }
+
+    // Ouvrir le fichier avec le Property Store
+    IPropertyStore* pPropertyStore = nullptr;
+    hr = SHGetPropertyStoreFromParsingName(filePath.c_str(), nullptr, GPS_DEFAULT, IID_PPV_ARGS(&pPropertyStore));
+    if (FAILED(hr)) {
+        std::wcerr << L"Erreur lors de l'accès aux métadonnées du fichier : " << std::hex << hr << std::endl;
+        CoUninitialize();
+        return;
+    }
+
+    // Récupérer la date de prise de vue (PKEY_Photo_DateTaken)
+    PROPVARIANT propVarDateTaken;
+    PropVariantInit(&propVarDateTaken);
+    hr = pPropertyStore->GetValue(PKEY_Photo_DateTaken, &propVarDateTaken);
+    if (SUCCEEDED(hr) && propVarDateTaken.vt == VT_FILETIME) {
+        SYSTEMTIME sysTime;
+        FileTimeToSystemTime(&propVarDateTaken.filetime, &sysTime);
+        std::wcout << L"Date de prise de vue : "
+            << sysTime.wYear << L"-" << sysTime.wMonth << L"-" << sysTime.wDay << L" "
+            << sysTime.wHour << L":" << sysTime.wMinute << L":" << sysTime.wSecond
+            << std::endl;
+    }
+    else {
+        std::wcerr << L"Date de prise de vue introuvable ou erreur : " << std::hex << hr << std::endl;
+    }
+    PropVariantClear(&propVarDateTaken);
+
+    // Nettoyage
+    pPropertyStore->Release();
+    CoUninitialize();
 }
