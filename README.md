@@ -1,4 +1,6 @@
-# PikPok File Transfer
+<p align="center">
+    <img width="200" src="https://github.com/Snouf-ID/CodeAndLink/blob/master/LogoPikPokFileTransfer.png" alt="PikPok File Transfer">
+</p>
 
 **PikPok File Transfer** is a document transfer program between a C++ application on Windows 10 and an HTML page accessible from any device (PC, Steam Deck, phone). This system allows for simple and quick file transfers via a C++ server and a web HTML client.
 
