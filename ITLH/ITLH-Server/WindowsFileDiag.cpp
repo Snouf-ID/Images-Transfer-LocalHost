@@ -114,7 +114,7 @@ std::string WindowsFileDiag::open_select_folder_diag_window()
  * @warning If the file cannot be opened or its attributes cannot be modified,
  * an error message is logged to `std::cerr`, and no changes are made.
  */
-static void set_file_time(const std::string& file_path, const FILETIME& ft)
+static void set_file_creation_time(const std::string& file_path, const FILETIME& ft)
 {
     HANDLE file_handle = CreateFileA(
         file_path.c_str(),
@@ -131,7 +131,7 @@ static void set_file_time(const std::string& file_path, const FILETIME& ft)
         return;
     }
 
-    if (!SetFileTime(file_handle, nullptr, nullptr, &ft))
+    if (!SetFileTime(file_handle, &ft, nullptr, nullptr))
     {
         std::cerr << "Error : Can't change file time attribut." << std::endl;
     }
@@ -161,34 +161,34 @@ void WindowsFileDiag::apply_last_modified_date_on_file(const std::string& file_p
     ft.dwLowDateTime = static_cast<DWORD>(file_time_intervals);
     ft.dwHighDateTime = static_cast<DWORD>(file_time_intervals >> 32);
 
-    set_file_time(file_path, ft);
+    set_file_creation_time(file_path, ft);
 }
 
 /**
- * @brief Applies the metadata "Date Taken" to the file's last modified time.
+ * @brief Applies the "Date Taken" metadata as the file's last modified time.
  *
- * Reads the "Date Taken" metadata from the file's properties and applies it as
- * the file's last modified time. The function uses Windows COM and Property Store APIs
- * to extract the metadata and handle the conversion to local time.
+ * This function retrieves the "Date Taken" metadata from the specified file's properties
+ * using the Windows Property Store API. It converts the metadata from `FILETIME` to `SYSTEMTIME`,
+ * and then applies it as the file's last modified time.
  *
- * Steps performed:
- * - Initialize COM.
- * - Retrieve the file's property store.
- * - Extract the `PKEY_Photo_DateTaken` property as a `FILETIME`.
- * - Convert the UTC `FILETIME` to local time, handling time zones and daylight savings.
- * - Apply the resulting local `FILETIME` to the file using `set_file_time`.
+ * The steps performed are as follows:
+ * - Initializes COM for the current thread.
+ * - Converts the file path from a `std::string` to a `std::wstring`.
+ * - Opens the file's property store to access its metadata.
+ * - Retrieves the `PKEY_Photo_DateTaken` property, which contains the "Date Taken" information, in `FILETIME` format.
+ * - Converts the `FILETIME` to `SYSTEMTIME` (UTC).
+ * - Converts the `SYSTEMTIME` to `FILETIME` for application to the file.
+ * - Releases all resources and uninitializes COM.
+ * - Updates the file's creation time to match the "Date Taken" value.
  *
- * @param file_path The path to the file to be updated.
+ * @param file_path The path to the file whose metadata will be used to set the last modified time.
  *
- * @note If the "Date Taken" metadata is not available or an error occurs,
- * the function logs an error message and exits without modifying the file.
+ * @note This function assumes that the "Date Taken" metadata is available as a `FILETIME`.
+ * It applies the metadata as the file's last modified time, regardless of the current local time zone.
  *
- * @warning Ensure the calling thread is compatible with COM initialization.
- * The function releases all allocated COM resources before returning.
+ * @warning Ensure that the calling thread is initialized with COM. The function handles all necessary COM initialization and cleanup.
  *
- * @exception std::runtime_error Thrown if COM initialization fails.
- *
- * @see set_file_time()
+ * @exception std::runtime_error Thrown if COM initialization or metadata retrieval fails.
  */
 void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
 {
@@ -221,30 +221,18 @@ void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
         return;
     }
 
-    SYSTEMTIME utc_system_time, local_system_time;
+    SYSTEMTIME system_time;
 
     // Convertir FILETIME en SYSTEMTIME (UTC)
-    if (!FileTimeToSystemTime(&prop_var_date_taken.filetime, &utc_system_time))
+    if (!FileTimeToSystemTime(&prop_var_date_taken.filetime, &system_time))
     {
         std::cerr << "Erreur lors de la conversion FILETIME en SYSTEMTIME." << std::endl;
         return;
     }
 
-    // Convertir SYSTEMTIME (UTC) en SYSTEMTIME (Local) avec gestion des fuseaux horaires
-    if (!SystemTimeToTzSpecificLocalTime(nullptr, &utc_system_time, &local_system_time))
-    {
-        std::cerr << "Erreur lors de la conversion SYSTEMTIME UTC en heure locale." << std::endl;
-        return;
-    }
-
-    //std::wcout << L"Date de prise de vue (locale) : "
-    //    << local_system_time.wYear << L"-" << local_system_time.wMonth << L"-" << local_system_time.wDay << L" "
-    //    << local_system_time.wHour << L":" << local_system_time.wMinute << L":" << local_system_time.wSecond
-    //    << std::endl;
-
     FILETIME local_file_time;
 
-    if (!SystemTimeToFileTime(&local_system_time, &local_file_time))
+    if (!SystemTimeToFileTime(&system_time, &local_file_time))
     {
         return;
     }
@@ -253,5 +241,5 @@ void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
     property_store->Release();
     CoUninitialize();
 
-    set_file_time(file_path, local_file_time);
+    set_file_creation_time(file_path, local_file_time);
 }
