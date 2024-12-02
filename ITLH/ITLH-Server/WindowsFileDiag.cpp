@@ -12,6 +12,30 @@
 //#define NTDDI_VERSION NTDDI_WIN10 // do we need this ?
 //#define _WIN32_WINNT _WIN32_WINNT_WIN10 // in visual project property already -> it's for win10 code setup lib
 
+/**
+ * @class WindowsFileDiag
+ * @brief Provides utilities for file and folder selection dialogs on Windows.
+ *
+ * This method opens a folder selection dialog using the Windows COM-based File Dialog API.
+ * It allows the user to select a folder and retrieves the absolute path as a `std::string`.
+ *
+ * The function initializes the COM library, creates and configures a `FileOpenDialog` instance,
+ * and presents it to the user. If a folder is successfully selected, its path is retrieved
+ * via the `IShellItem` interface and converted from `std::wstring` to `std::string`.
+ * The function ensures all COM resources are properly released before returning.
+ *
+ * @return A `std::string` containing the absolute path of the selected folder.
+ * If no folder is selected or an error occurs, an empty string is returned.
+ *
+ * @exception std::runtime_error Thrown if COM initialization or dialog creation fails.
+ *
+ * @note This implementation uses `FOS_PICKFOLDERS` to configure the dialog for folder selection.
+ * Conversion from `std::wstring` to `std::string` may result in data loss for non-ASCII folder paths.
+ * Consider using `std::wstring` if Unicode support is required.
+ *
+ * @warning Ensure the calling thread is compatible with COM (STA or MTA). Failing to properly initialize
+ * or uninitialize COM can lead to undefined behavior.
+ */
 std::string WindowsFileDiag::open_select_folder_diag_window()
 {
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -75,6 +99,21 @@ std::string WindowsFileDiag::open_select_folder_diag_window()
     return "";
 }
 
+/**
+ * @brief Sets the last modified time of a file using a `FILETIME` structure.
+ *
+ * This function opens a file specified by its path and updates its last modified time.
+ * It uses the Windows API `SetFileTime` to apply the provided `FILETIME` value to the file.
+ *
+ * @param file_path The path to the file whose attributes are to be modified.
+ * @param ft The `FILETIME` structure containing the desired last modified time.
+ *
+ * @note Ensure the caller has the necessary write permissions for the file.
+ * The file handle is closed after the operation to prevent resource leaks.
+ *
+ * @warning If the file cannot be opened or its attributes cannot be modified,
+ * an error message is logged to `std::cerr`, and no changes are made.
+ */
 static void set_file_time(const std::string& file_path, const FILETIME& ft)
 {
     HANDLE file_handle = CreateFileA(
@@ -100,6 +139,21 @@ static void set_file_time(const std::string& file_path, const FILETIME& ft)
     CloseHandle(file_handle);
 }
 
+/**
+ * @brief Updates the last modified time of a file based on a Unix timestamp.
+ *
+ * Converts the given Unix timestamp (in milliseconds since epoch) to a `FILETIME` format
+ * and applies it as the file's last modified time. This is done by calling
+ * the `set_file_time` function internally.
+ *
+ * @param file_path The path to the file to be updated.
+ * @param last_modified_time The last modified timestamp in milliseconds since Unix epoch.
+ *
+ * @note The function assumes the provided timestamp is in UTC and converts it to `FILETIME`
+ * using the Windows epoch offset.
+ *
+ * @see set_file_time()
+ */
 void WindowsFileDiag::apply_last_modified_date_on_file(const std::string& file_path, double last_modified_time)
 {
     FILETIME ft;
@@ -110,6 +164,32 @@ void WindowsFileDiag::apply_last_modified_date_on_file(const std::string& file_p
     set_file_time(file_path, ft);
 }
 
+/**
+ * @brief Applies the metadata "Date Taken" to the file's last modified time.
+ *
+ * Reads the "Date Taken" metadata from the file's properties and applies it as
+ * the file's last modified time. The function uses Windows COM and Property Store APIs
+ * to extract the metadata and handle the conversion to local time.
+ *
+ * Steps performed:
+ * - Initialize COM.
+ * - Retrieve the file's property store.
+ * - Extract the `PKEY_Photo_DateTaken` property as a `FILETIME`.
+ * - Convert the UTC `FILETIME` to local time, handling time zones and daylight savings.
+ * - Apply the resulting local `FILETIME` to the file using `set_file_time`.
+ *
+ * @param file_path The path to the file to be updated.
+ *
+ * @note If the "Date Taken" metadata is not available or an error occurs,
+ * the function logs an error message and exits without modifying the file.
+ *
+ * @warning Ensure the calling thread is compatible with COM initialization.
+ * The function releases all allocated COM resources before returning.
+ *
+ * @exception std::runtime_error Thrown if COM initialization fails.
+ *
+ * @see set_file_time()
+ */
 void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
 {
     HRESULT hr = CoInitialize(nullptr);
@@ -119,6 +199,7 @@ void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
         return;
     }
 
+    // convert string to wstring, warning !
     std::wstring file_path_wstring(file_path.begin(), file_path.end());
 
     // Ouvrir le fichier avec le Property Store
