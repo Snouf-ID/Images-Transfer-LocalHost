@@ -74,10 +74,8 @@ static void save_file(const std::string& file_name, const uint8_t* data, size_t 
     out_file.write(reinterpret_cast<const char*>(data), size);
     out_file.close();
 
-    WindowsFileDiag::GetFileMetadata(std::wstring(full_path.begin(), full_path.end()));
-
-    // warning C4244 : 'argument' : conversion de 'double' en 'uint64_t', perte possible de données
-    WindowsFileDiag::setFileCreationTime(full_path, last_modified);
+    WindowsFileDiag::apply_last_modified_date_on_file(full_path, last_modified);
+    WindowsFileDiag::apply_metadata_date_on_file(full_path);
 
     std::cout << "File save : " << file_name << " (" << size << " octets)" << std::endl;
 }
@@ -191,7 +189,7 @@ private:
             [](beast::error_code ec, std::size_t bytes_transferred) {
                 if (ec)
                 {
-                    throw std::runtime_error("Erreur lors de l'envoi de l'ACK : " + ec.message());
+                    throw std::runtime_error("Error while send ACK : " + ec.message());
                 }
             });
     }
@@ -343,7 +341,7 @@ int main()
 {
     try
     {
-        global_save_directory_path = WindowsFileDiag::select_folder();
+        global_save_directory_path = WindowsFileDiag::open_select_folder_diag_window();
         if (global_save_directory_path.empty())
         {
             std::cerr << "No folder selected. Server closing." << std::endl;

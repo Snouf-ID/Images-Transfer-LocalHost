@@ -4,9 +4,8 @@
 class WindowsFileDiag
 {
 public:
-	static std::string select_folder();
-	static void apply_last_modified(const std::string& file_path, double last_modified_time);
-	static void setFileCreationTime(const std::string& filePath, uint64_t creationTimeMs);
-	static void GetFileMetadata(const std::wstring& filePath);
+	static std::string open_select_folder_diag_window();
+	static void apply_last_modified_date_on_file(const std::string& file_path, double last_modified_time);
+	static void apply_metadata_date_on_file(const std::string& filePath);
 };
 

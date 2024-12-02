@@ -1,198 +1,176 @@
 #include "WindowsFileDiag.h"
 
 #include <windows.h>
-#include <shobjidl.h> // Pour IFileDialog
+#include <shobjidl.h>
 #include <string>
 #include <iostream>
-#include <combaseapi.h> // Pour CoInitialize et CoUninitialize
-
-#include <propvarutil.h> // Pour PropVariantInit et PropVariantClear
-#include <propsys.h>     // Pour accès au Property System
+#include <combaseapi.h>
+#include <propvarutil.h>
+#include <propsys.h>
 #include <propkey.h>
 
-//#define NTDDI_VERSION NTDDI_WIN10 // utile ?
-//#define _WIN32_WINNT _WIN32_WINNT_WIN10 // deja dans les property du project
+//#define NTDDI_VERSION NTDDI_WIN10 // do we need this ?
+//#define _WIN32_WINNT _WIN32_WINNT_WIN10 // in visual project property already -> it's for win10 code setup lib
 
-std::string WindowsFileDiag::select_folder()
+std::string WindowsFileDiag::open_select_folder_diag_window()
 {
-    // Initialiser COM
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    if (FAILED(hr)) {
-        std::cerr << "Impossible d'initialiser COM. Erreur : " << std::hex << hr << std::endl;
+    if (FAILED(hr))
+    {
+        std::cerr << "Init Com Error : " << std::hex << hr << std::endl;
+        throw std::runtime_error("Can't init diag windows for selecting directory");
         return "";
     }
 
-    // Créer l'objet FileDialog
-    IFileDialog* pFileDialog = nullptr;
-    hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileDialog, reinterpret_cast<void**>(&pFileDialog));
-    if (FAILED(hr)) {
-        std::cerr << "Impossible de créer la boîte de dialogue. Erreur : " << std::hex << hr << std::endl;
+    IFileDialog* file_dialog = nullptr;
+    hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileDialog, reinterpret_cast<void**>(&file_dialog));
+    if (FAILED(hr))
+    {
+        std::cerr << "Create Com Error : " << std::hex << hr << std::endl;
         CoUninitialize();
+        throw std::runtime_error("Can't create diag windows for selecting directory");
         return "";
     }
 
-    // Configuration pour sélectionner un dossier
     DWORD options;
-    hr = pFileDialog->GetOptions(&options);
-    if (SUCCEEDED(hr)) {
-        pFileDialog->SetOptions(options | FOS_PICKFOLDERS);
+    hr = file_dialog->GetOptions(&options);
+    if (SUCCEEDED(hr))
+    {
+        file_dialog->SetOptions(options | FOS_PICKFOLDERS);
     }
 
-    //// Définir un titre personnalisé
-    //hr = pFileDialog->SetTitle(L"Veuillez sélectionner un dossier pour sauvegarder les images");
-    //if (FAILED(hr)) {
-    //    std::cerr << "Impossible de définir le titre." << std::endl;
-    //}
-
-    // Afficher la boîte de dialogue
-    hr = pFileDialog->Show(NULL);
-    if (FAILED(hr)) {
-        std::cerr << "Aucun dossier sélectionné ou erreur. Erreur : " << std::hex << hr << std::endl;
-        pFileDialog->Release();
+    hr = file_dialog->Show(NULL);
+    if (FAILED(hr))
+    {
+        std::cerr << "No directory select or error : " << std::hex << hr << std::endl;
+        file_dialog->Release();
         CoUninitialize();
         return "";
     }
 
-    // Récupérer le chemin du dossier sélectionné
-    IShellItem* pItem = nullptr;
-    hr = pFileDialog->GetResult(&pItem);
-    if (SUCCEEDED(hr)) {
-        PWSTR folderPath = nullptr;
-        hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &folderPath);
-        if (SUCCEEDED(hr)) {
-            std::wstring ws(folderPath);
-            CoTaskMemFree(folderPath);
-            pItem->Release();
-            pFileDialog->Release();
+    IShellItem* item = nullptr;
+    hr = file_dialog->GetResult(&item);
+    if (SUCCEEDED(hr))
+    {
+        PWSTR folder_path = nullptr;
+        hr = item->GetDisplayName(SIGDN_FILESYSPATH, &folder_path);
+        if (SUCCEEDED(hr))
+        {
+            std::wstring ws(folder_path);
+            CoTaskMemFree(folder_path);
+            item->Release();
+            file_dialog->Release();
             CoUninitialize();
 
-            // Convertir std::wstring en std::string
+            // convert std::wstring en std::string
             // warning C4244: '=' : conversion de 'wchar_t' en 'char', perte possible de données
             return std::string(ws.begin(), ws.end());
         }
-        pItem->Release();
+        item->Release();
     }
 
-    // Libérer les ressources COM
-    pFileDialog->Release();
+    file_dialog->Release();
     CoUninitialize();
 
     return "";
 }
 
-void WindowsFileDiag::apply_last_modified(const std::string& file_path, double last_modified_time)
+static void set_file_time(const std::string& file_path, const FILETIME& ft)
 {
-    // Convertir le timestamp en structure time_t
-    auto file_time = static_cast<std::time_t>(last_modified_time / 1000.0);
-
     HANDLE file_handle = CreateFileA(
         file_path.c_str(),
         FILE_WRITE_ATTRIBUTES,
-        0,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-
-    if (file_handle == INVALID_HANDLE_VALUE) {
-        std::cerr << "Erreur : Impossible d'ouvrir le fichier pour modifier les attributs." << std::endl;
-        return;
-    }
-
-    // Convertir time_t en FILETIME
-    FILETIME ft;
-    ULARGE_INTEGER ull;
-    ull.QuadPart = static_cast<uint64_t>(file_time) * 10000000ULL + 116444736000000000ULL;
-    ft.dwLowDateTime = static_cast<DWORD>(ull.QuadPart);
-    ft.dwHighDateTime = static_cast<DWORD>(ull.QuadPart >> 32);
-
-    // Appliquer la date de modification
-    if (!SetFileTime(file_handle, nullptr, nullptr, &ft)) {
-        std::cerr << "Erreur : Impossible de modifier la date du fichier." << std::endl;
-    }
-
-    CloseHandle(file_handle);
-}
-
-
-// Fonction pour convertir un timestamp en ms depuis Unix epoch en FILETIME
-static FILETIME convertToFileTime(uint64_t timestamp_ms) {
-    // Convertir de millisecondes en "100-nanosecond intervals"
-    uint64_t intervals = timestamp_ms * 10000ULL + 116444736000000000ULL;
-
-    FILETIME ft;
-    ft.dwLowDateTime = static_cast<DWORD>(intervals);
-    ft.dwHighDateTime = static_cast<DWORD>(intervals >> 32);
-    return ft;
-}
-
-void WindowsFileDiag::setFileCreationTime(const std::string& filePath, uint64_t creationTimeMs) {
-    // Ouvrir le fichier avec les privilèges nécessaires
-    HANDLE fileHandle = CreateFileA(
-        filePath.c_str(),
-        FILE_WRITE_ATTRIBUTES,  // Autorisation pour modifier les attributs
         FILE_SHARE_READ | FILE_SHARE_WRITE,
         nullptr,
         OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL,
         nullptr);
 
-    if (fileHandle == INVALID_HANDLE_VALUE) {
-        std::cerr << "Impossible d'ouvrir le fichier. Code d'erreur : " << GetLastError() << std::endl;
+    if (file_handle == INVALID_HANDLE_VALUE)
+    {
+        std::cerr << "Error : Can't open file for change file attributes." << std::endl;
         return;
     }
 
-    // Convertir le timestamp en FILETIME
-    FILETIME creationTime = convertToFileTime(creationTimeMs);
-
-    // Modifier uniquement la date de création
-    if (!SetFileTime(fileHandle, &creationTime, nullptr, nullptr)) {
-        std::cerr << "Impossible de modifier la date de création. Code d'erreur : " << GetLastError() << std::endl;
-    }
-    else {
-        std::cout << "Date de création modifiée avec succès." << std::endl;
+    if (!SetFileTime(file_handle, nullptr, nullptr, &ft))
+    {
+        std::cerr << "Error : Can't change file time attribut." << std::endl;
     }
 
-    // Fermer le handle du fichier
-    CloseHandle(fileHandle);
+    CloseHandle(file_handle);
 }
 
-void WindowsFileDiag::GetFileMetadata(const std::wstring& filePath)
+void WindowsFileDiag::apply_last_modified_date_on_file(const std::string& file_path, double last_modified_time)
 {
-    // Initialiser COM
+    FILETIME ft;
+    uint64_t file_time_intervals = static_cast<uint64_t>(last_modified_time * 10000.0) + 116444736000000000ULL;
+    ft.dwLowDateTime = static_cast<DWORD>(file_time_intervals);
+    ft.dwHighDateTime = static_cast<DWORD>(file_time_intervals >> 32);
+
+    set_file_time(file_path, ft);
+}
+
+void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
+{
     HRESULT hr = CoInitialize(nullptr);
-    if (FAILED(hr)) {
-        std::wcerr << L"Erreur lors de l'initialisation de COM : " << std::hex << hr << std::endl;
+    if (FAILED(hr))
+    {
+        std::cerr << "Error Init Com : " << std::hex << hr << std::endl;
         return;
     }
 
+    std::wstring file_path_wstring(file_path.begin(), file_path.end());
+
     // Ouvrir le fichier avec le Property Store
-    IPropertyStore* pPropertyStore = nullptr;
-    hr = SHGetPropertyStoreFromParsingName(filePath.c_str(), nullptr, GPS_DEFAULT, IID_PPV_ARGS(&pPropertyStore));
-    if (FAILED(hr)) {
-        std::wcerr << L"Erreur lors de l'accès aux métadonnées du fichier : " << std::hex << hr << std::endl;
+    IPropertyStore* property_store = nullptr;
+    hr = SHGetPropertyStoreFromParsingName(file_path_wstring.c_str(), nullptr, GPS_DEFAULT, IID_PPV_ARGS(&property_store));
+    if (FAILED(hr))
+    {
+        std::cerr << "Error Accessing File Metadata : " << std::hex << hr << std::endl;
         CoUninitialize();
         return;
     }
 
     // Récupérer la date de prise de vue (PKEY_Photo_DateTaken)
-    PROPVARIANT propVarDateTaken;
-    PropVariantInit(&propVarDateTaken);
-    hr = pPropertyStore->GetValue(PKEY_Photo_DateTaken, &propVarDateTaken);
-    if (SUCCEEDED(hr) && propVarDateTaken.vt == VT_FILETIME) {
-        SYSTEMTIME sysTime;
-        FileTimeToSystemTime(&propVarDateTaken.filetime, &sysTime);
-        std::wcout << L"Date de prise de vue : "
-            << sysTime.wYear << L"-" << sysTime.wMonth << L"-" << sysTime.wDay << L" "
-            << sysTime.wHour << L":" << sysTime.wMinute << L":" << sysTime.wSecond
-            << std::endl;
+    PROPVARIANT prop_var_date_taken;
+    PropVariantInit(&prop_var_date_taken);
+    hr = property_store->GetValue(PKEY_Photo_DateTaken, &prop_var_date_taken);
+    if (!(SUCCEEDED(hr) && prop_var_date_taken.vt == VT_FILETIME))
+    {
+        return;
     }
-    else {
-        std::wcerr << L"Date de prise de vue introuvable ou erreur : " << std::hex << hr << std::endl;
-    }
-    PropVariantClear(&propVarDateTaken);
 
-    // Nettoyage
-    pPropertyStore->Release();
+    SYSTEMTIME utc_system_time, local_system_time;
+
+    // Convertir FILETIME en SYSTEMTIME (UTC)
+    if (!FileTimeToSystemTime(&prop_var_date_taken.filetime, &utc_system_time))
+    {
+        std::cerr << "Erreur lors de la conversion FILETIME en SYSTEMTIME." << std::endl;
+        return;
+    }
+
+    // Convertir SYSTEMTIME (UTC) en SYSTEMTIME (Local) avec gestion des fuseaux horaires
+    if (!SystemTimeToTzSpecificLocalTime(nullptr, &utc_system_time, &local_system_time))
+    {
+        std::cerr << "Erreur lors de la conversion SYSTEMTIME UTC en heure locale." << std::endl;
+        return;
+    }
+
+    //std::wcout << L"Date de prise de vue (locale) : "
+    //    << local_system_time.wYear << L"-" << local_system_time.wMonth << L"-" << local_system_time.wDay << L" "
+    //    << local_system_time.wHour << L":" << local_system_time.wMinute << L":" << local_system_time.wSecond
+    //    << std::endl;
+
+    FILETIME local_file_time;
+
+    if (!SystemTimeToFileTime(&local_system_time, &local_file_time))
+    {
+        return;
+    }
+
+    PropVariantClear(&prop_var_date_taken);
+    property_store->Release();
     CoUninitialize();
+
+    set_file_time(file_path, local_file_time);
 }
