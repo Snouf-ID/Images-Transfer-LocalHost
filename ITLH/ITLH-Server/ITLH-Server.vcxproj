@@ -131,7 +131,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="MainServer.h" />
     <ClInclude Include="WindowsFileDiag.h" />
   </ItemGroup>
   <ItemGroup>
