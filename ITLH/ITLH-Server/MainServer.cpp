@@ -212,7 +212,6 @@ private:
         do_read();
     }
 
-
     /**
      * @brief Reads incoming WebSocket messages from the client.
      *
@@ -228,12 +227,13 @@ private:
                 boost::ignore_unused(bytes_transferred);
                 if (ec)
                 {
+                    // if client close, we won't crash server, just notify with console msg
                     const int error_value = ec.value();
                     if (error_value == WSAECONNABORTED)
                     {
                         std::cerr << "Client close connection, he close his internet page, reload internet page or shutdown." << std::endl;
                     }
-                    else
+                    else // else, if it's an unknow error like read fail, we crash server. (we don't want a file download miss at the end)
                     {
                         throw std::runtime_error("Async read fail : " + ec.message() + " " + ec.what() + " " + ec.category().name() + " " + std::to_string(ec.value()) + " " + std::to_string(error_value));
                     }
