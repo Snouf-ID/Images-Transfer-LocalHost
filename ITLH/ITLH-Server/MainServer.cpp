@@ -100,7 +100,8 @@ static void save_file(const std::string& file_name, const uint8_t* data, size_t 
  * @note This implementation is designed to handle binary WebSocket messages containing file data
  * in a custom format. Other message types are not expected and will be logged.
  */
-class Session : public std::enable_shared_from_this<Session> {
+class Session : public std::enable_shared_from_this<Session>
+{
 public:
      /**
      * @brief Initializes the WebSocket session with a given socket.
@@ -120,7 +121,8 @@ public:
      * transitions to reading messages from the client. The handshake ensures the WebSocket
      * protocol is properly established.
      */
-    void run() {
+    void run()
+    {
         m_ws.async_accept([self = shared_from_this()](beast::error_code ec) {
             self->on_accept(ec);
             });
@@ -202,7 +204,8 @@ private:
      *
      * @param ec The error code indicating the result of the handshake.
      */
-    void on_accept(beast::error_code ec) {
+    void on_accept(beast::error_code ec)
+    {
         if (ec)
         {
             throw std::runtime_error("Error on_accept " + ec.message());
@@ -221,7 +224,8 @@ private:
      *
      * @note This function calls itself recursively to handle multiple messages in sequence.
      */
-    void do_read() {
+    void do_read()
+    {
         m_ws.async_read(m_buffer,
             [self = shared_from_this()](beast::error_code ec, std::size_t bytes_transferred) {
                 boost::ignore_unused(bytes_transferred);
@@ -269,7 +273,8 @@ private:
  * The `accept()` function is responsible for accepting new client connections asynchronously and
  * invoking the `Session` class to handle communication with the client.
  */
-class WebSocketServer {
+class WebSocketServer
+{
 public:
     WebSocketServer(net::io_context& ioc, tcp::endpoint endpoint)
         : m_acceptor(ioc, endpoint) {
@@ -304,15 +309,16 @@ private:
  */
 static void print_local_IPv4(net::io_context& io_context)
 {
-    // Obtenez une liste des interfaces réseau locales
+    // local interface list
     boost::asio::ip::tcp::resolver resolver(io_context);
     boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
     auto results = resolver.resolve(query);
 
-    // Parcourez les résultats pour afficher les adresses IPv4
-    for (auto const& entry : results) {
+    for (auto const& entry : results)
+    {
         auto endpoint = entry.endpoint();
-        if (endpoint.address().is_v4()) { // Filtrer uniquement les IPv4
+        if (endpoint.address().is_v4())
+        {
             std::cout << "Important! Here is your local IPV4 address to indicate on the WEB page : " << endpoint.address().to_string() << std::endl;
         }
     }
