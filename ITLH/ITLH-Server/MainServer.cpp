@@ -110,7 +110,11 @@ public:
      * @param socket The TCP socket representing the client connection.
      */
     explicit Session(tcp::socket socket)
-        : m_ws(std::move(socket)) {}
+        : m_ws(std::move(socket))
+    {
+        [[maybe_unused]] std::size_t last_value = m_ws.read_message_max();
+        m_ws.read_message_max(2'147'483'648); // 2 GO max size file receive, if more you need incr value, make a dev for cut un part or discard file
+    }
 
     /**
      * @brief Starts the WebSocket session by performing the handshake.
