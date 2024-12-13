@@ -14,7 +14,8 @@ namespace websocket = beast::websocket;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 
-constexpr char ACK_MESSAGE[] = "ACK:image_received";
+constexpr char ACK_MESSAGE[] = "ACK:image_received"; // image received
+constexpr char ACK_WARNING[] = "ACK:image_warnings"; // image received but can't be read because data are corrupt
 constexpr uint_least16_t APP_PORT = 5000;
 
 constexpr uint32_t MAX_FILE_SAME_NAME = 500'000;
@@ -60,7 +61,7 @@ static std::string generate_unique_file_path(const std::string& directory, const
     return "";
 }
 
-static void save_file(const std::string& file_name, const uint8_t* data, size_t size, double last_modified)
+static bool save_file(const std::string& file_name, const uint8_t* data, size_t size, double last_modified)
 {
     const std::string& full_path = generate_unique_file_path(global_save_directory_path, file_name);
 
@@ -69,15 +70,17 @@ static void save_file(const std::string& file_name, const uint8_t* data, size_t 
     {
         throw std::ios_base::failure("Failed to open file: " + full_path + " for writing");
 
-        return;
+        return false;
     }
     out_file.write(reinterpret_cast<const char*>(data), size);
     out_file.close();
 
     WindowsFileDiag::apply_last_modified_date_on_file(full_path, last_modified);
-    WindowsFileDiag::apply_metadata_date_on_file(full_path);
+    bool no_error = WindowsFileDiag::apply_metadata_date_on_file(full_path);
 
     std::cout << "File save : " << file_name << " (" << size << " octets)" << std::endl;
+
+    return no_error;
 }
 
 /**
@@ -185,11 +188,11 @@ private:
         const uint8_t* file_content = data;
         const size_t file_size = size - DATA_FILE_RECEIVE_HEADER_SIZE - name_length;
 
-        save_file(file_name, file_content, file_size, last_modified);
+        bool no_error = save_file(file_name, file_content, file_size, last_modified);
 
         // Send confirmation of file is get by server
         m_ws.async_write(
-            boost::asio::buffer(ACK_MESSAGE),
+            boost::asio::buffer(no_error ? ACK_MESSAGE : ACK_WARNING),
             [](beast::error_code ec, std::size_t bytes_transferred) {
                 if (ec)
                 {
@@ -239,7 +242,8 @@ private:
 
                     // WSAECONNABORTED -> client close after send file
                     // boost::asio::error::eof -> client close but never send file
-                    if (error_value == WSAECONNABORTED || ec == boost::asio::error::eof)
+                    // boost::beast::websocket::error::closed -> an other error of close of html page
+                    if (error_value == WSAECONNABORTED || ec == boost::asio::error::eof || ec == boost::beast::websocket::error::closed)
                     {
                         std::cout << "Client close connection, he close his internet page, reload internet page or shutdown." << std::endl;
                     }

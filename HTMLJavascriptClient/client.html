@@ -132,6 +132,7 @@
         var storedIp = '';
         var sendCount = 0;
         var confirmCount = 0;
+        var corruptCount = 0;
         // Fonction pour ajouter/mettre à jour le paramètre IP dans l'URL
         function updateUrlWithIp() {
             const ip = storedIp;
@@ -301,12 +302,20 @@
                             // Attendre la confirmation du serveur
                             socket.onmessage = function (event) {
                                 console.log("Message reçu du serveur :", event.data);
-                                if (event.data.startsWith('ACK')) {
+                                if (event.data.startsWith('ACK:image_received')) {
                                     console.log(`Confirmation reçue pour ${file.name}`);
                                     confirmCount++;
 
                                     resolve(); // Résoudre la promesse lorsque la confirmation est reçue
-                                } else {
+                                }
+                                else if (event.data.startsWith('ACK:image_warnings')) {
+                                    console.log(`Confirmation reçue pour ${file.name} mais le fichier est corrompu`);
+                                    confirmCount++;
+                                    corruptCount++;
+
+                                    resolve(); // Résoudre la promesse lorsque la confirmation est reçue
+                                }
+                                else {
                                     reject(`Erreur lors de la réception de la confirmation pour ${file.name}`);
                                 }
                             };
@@ -335,8 +344,11 @@
 
                     if (confirmCount == sendCount) {
                         activateButtons();
-                        if (anyFileSend) {
+                        if (anyFileSend && (corruptCount == 0)) {
                             headertext.innerText = 'Everything went well. You can again select files or an entire directory that will be sent';
+                        }
+                        else {
+                            headertext.innerText = `You have ${corruptCount} files send but corrupt. You can again select files or an entire directory that will be sent`;
                         }
                         // Mettre à jour le texte du bouton pour afficher le nombre d'images sélectionnées
                         sendFileButton.innerHTML = `Envoyer des images (${sendCount} fichier${sendCount > 1 ? 's' : ''} previously sent)`;
@@ -346,6 +358,7 @@
                 inputFile.addEventListener('change', function (event) {
                     confirmCount = 0;
                     sendCount = 0;
+                    corruptCount = 0;
 
                     const files = event.target.files; // Récupère tous les fichiers sélectionnés
                     if (files.length === 0) {
@@ -371,6 +384,7 @@
                     sendDirButton.addEventListener("click", async () => {
                         confirmCount = 0;
                         sendCount = 0;
+                        corruptCount = 0;
 
                         desactivateButtons();
 
@@ -402,12 +416,12 @@
                         if (confirmCount == sendCount) {
                             activateButtons();
                             if (anyFileSend) {
-                                if (totalFilesCount == sentFilesCount) {
+                                if ((totalFilesCount == sentFilesCount) && (corruptCount == 0)) {
                                     headertext.innerText = 'Everything went well. You can again select files or an entire directory that will be sent';
                                 }
                                 else {
                                     var totalSkip = totalFilesCount - sentFilesCount;
-                                    headertext.innerText = `Miss ${totalSkip} files on ${totalFilesCount}. You can again select files or an entire directory that will be sent`;
+                                    headertext.innerText = `Miss ${totalSkip} files on ${totalFilesCount}. You have ${corruptCount} files send but corrupt. You can again select files or an entire directory that will be sent`;
                                 }
                             }
                         }

@@ -190,13 +190,13 @@ void WindowsFileDiag::apply_last_modified_date_on_file(const std::string& file_p
  *
  * @exception std::runtime_error Thrown if COM initialization or metadata retrieval fails.
  */
-void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
+bool WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
 {
     HRESULT hr = CoInitialize(nullptr);
     if (FAILED(hr))
     {
         std::cerr << "Error Init Com : " << std::hex << hr << std::endl;
-        return;
+        return false;
     }
 
     // convert string to wstring, warning !
@@ -205,11 +205,13 @@ void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
     // Ouvrir le fichier avec le Property Store
     IPropertyStore* property_store = nullptr;
     hr = SHGetPropertyStoreFromParsingName(file_path_wstring.c_str(), nullptr, GPS_DEFAULT, IID_PPV_ARGS(&property_store));
+    //SHGetPropertyStoreFromParsingName call can generate warning print like : "Corrupt JPEG data: 2809223 extraneous bytes before marker 0xd9", it's not a pb, file open correctly on windows after
     if (FAILED(hr))
     {
+        // we can save file that fail at this position : "JPEG datastream contains no image" print and hr is ERROR. This path indicate file can't be open by windows after.
         std::cerr << "Error Accessing File Metadata : " << std::hex << hr << std::endl;
         CoUninitialize();
-        return;
+        return false;
     }
 
     // Récupérer la date de prise de vue (PKEY_Photo_DateTaken)
@@ -218,7 +220,8 @@ void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
     hr = property_store->GetValue(PKEY_Photo_DateTaken, &prop_var_date_taken);
     if (!(SUCCEEDED(hr) && prop_var_date_taken.vt == VT_FILETIME))
     {
-        return;
+        //std::cerr << "Error Get PKEY_Photo_DateTaken Property." << std::endl;
+        return true;
     }
 
     SYSTEMTIME system_time;
@@ -226,15 +229,17 @@ void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
     // Convertir FILETIME en SYSTEMTIME (UTC)
     if (!FileTimeToSystemTime(&prop_var_date_taken.filetime, &system_time))
     {
-        std::cerr << "Erreur lors de la conversion FILETIME en SYSTEMTIME." << std::endl;
-        return;
+        //std::cerr << "Error convert FILETIME en SYSTEMTIME." << std::endl;
+        return true;
     }
 
     FILETIME local_file_time;
 
+    // TODO : really need FileTime -> SystemTime -> FileTime ???
     if (!SystemTimeToFileTime(&system_time, &local_file_time))
     {
-        return;
+        //std::cerr << "Error convert SYSTEMTIME in FILETIME." << std::endl;
+        return true;
     }
 
     PropVariantClear(&prop_var_date_taken);
@@ -242,4 +247,6 @@ void WindowsFileDiag::apply_metadata_date_on_file(const std::string& file_path)
     CoUninitialize();
 
     set_file_creation_time(file_path, local_file_time);
+
+    return true;
 }
