@@ -349,6 +349,7 @@ int main()
         if (global_save_directory_path.empty())
         {
             std::cerr << "No folder selected. Server closing." << std::endl;
+            system("pause");
             return EXIT_FAILURE;
         }
 
@@ -365,6 +366,7 @@ int main()
     catch (const std::exception& e)
     {
         std::cerr << "Something went wrong. Exception : " << e.what() << std::endl;
+        system("pause");
         return EXIT_FAILURE;
     }
 
