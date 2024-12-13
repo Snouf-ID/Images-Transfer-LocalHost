@@ -214,6 +214,7 @@ private:
             return;
         }
         // After accept new client we launch infinite do_read func for get all this files send
+        std::cout << "Connection with client accept" << std::endl;
         do_read();
     }
 
@@ -235,9 +236,12 @@ private:
                 {
                     // if client close, we won't crash server, just notify with console msg
                     const int error_value = ec.value();
-                    if (error_value == WSAECONNABORTED)
+
+                    // WSAECONNABORTED -> client close after send file
+                    // boost::asio::error::eof -> client close but never send file
+                    if (error_value == WSAECONNABORTED || ec == boost::asio::error::eof)
                     {
-                        std::cerr << "Client close connection, he close his internet page, reload internet page or shutdown." << std::endl;
+                        std::cout << "Client close connection, he close his internet page, reload internet page or shutdown." << std::endl;
                     }
                     else // else, if it's an unknow error like read fail, we crash server. (we don't want a file download miss at the end)
                     {
